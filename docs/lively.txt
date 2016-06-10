@@ -1,0 +1,30 @@
+
+app menu:
+
+Corporation
+    Staff
+    Partner
+    Department
+Sale
+    SaleOrder
+    Customer
+    SaleQuotation
+    RMA
+Purchase
+    PurchaseOrder
+    RFQ
+    Supplier
+Warehouse
+    Part
+    Inventory & Stock
+    Warehouse
+Manufacture
+    WorkOrder
+    PickBill
+Account
+    Chart of Accounts
+    General Journal
+    Invoice
+    Payment
+    Receipt
+System
