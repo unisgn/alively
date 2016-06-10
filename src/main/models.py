@@ -107,7 +107,7 @@ class VoidEntity:
 
 class PrimeEntity(VoidEntity):
 
-    id = Column(String, primary_key=True)
+    id = Column(Text, primary_key=True)
 
     def __eq__(self, other):
         return False if not isinstance(other, self.__class__) else self.id == other.id
@@ -147,9 +147,9 @@ class VersionEntity(PrimeEntity):
 class AuditMixin:
 
     created_at = Column(BigInteger)
-    created_by = Column(String)
+    created_by = Column(Text)
     modified_at = Column(BigInteger)
-    modified_by = Column(String)
+    modified_by = Column(Text)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -159,11 +159,11 @@ class AuditMixin:
 
 class BusinessEntity(VersionEntity, AuditMixin):
 
-    number = Column(String)
-    code = Column(String)
-    name = Column(String)
-    alias = Column(String)
-    memo = Column(String)
+    number = Column(Text)
+    code = Column(Text)
+    name = Column(Text)
+    alias = Column(Text)
+    memo = Column(Text)
     keyword = Column(Text)
 
     notes = Column(JSONB)
@@ -224,14 +224,14 @@ START: system domain entity
 
 class User(VersionEntity, AuditMixin, FakeBase):
     __tablename__ = 't_user'
-    password = Column(String)
-    name = Column(String)
+    password = Column(Text)
+    name = Column(Text)
     memo = Column(Text)
-    emp_fk = Column(String)
+    emp_fk = Column(Text)
 
     expire_date = Column(BigInteger)
-    login_ip = Column(String)
-    login_mac = Column(String)
+    login_ip = Column(Text)
+    login_mac = Column(Text)
     login_time = Column(BigInteger)
     logout_time = Column(BigInteger)
 
@@ -298,28 +298,28 @@ class ActivityLog:
 
 
 class AppDict(VersionEntity, FakeBase):
-    code = Column(String)
-    name = Column(String)
-    brief = Column(String)
+    code = Column(Text)
+    name = Column(Text)
+    brief = Column(Text)
     nullable = Column(Boolean)
-    dict_type = Column(String(1))
+    dict_type = Column(Text)
     items = relationship('AppDictItem')
 
 
 class AppDictItem(FakeBase, PrimeEntity):
 
-    app_dict_fk = Column(String, ForeignKey('app_dict.id'))
-    value = Column(String(64))
-    text = Column(String(255))
+    app_dict_fk = Column(ForeignKey('app_dict.id'))
+    value = Column(Text)
+    text = Column(Text)
     memo = Column(Text)
 
 
 class Role(FakeBase, PrimeEntity):
 
-    code = Column(String, unique=True, nullable=False)
+    code = Column(Text, unique=True, nullable=False)
     memo = Column(Text)
-    name = Column(String)
-    flag = Column(String(10))
+    name = Column(Text)
+    flag = Column(Text)
 
     permissions = relationship('RolePermissionHeader')
 
@@ -331,16 +331,16 @@ class Role(FakeBase, PrimeEntity):
 
 class UserRoleHeader(VoidEntity, FakeBase):
 
-    user_fk = Column(String, ForeignKey('t_user.id'), primary_key=True)
-    role_fk = Column(String, ForeignKey('role.id'), primary_key=True)
+    user_fk = Column(ForeignKey('t_user.id'), primary_key=True)
+    role_fk = Column(ForeignKey('role.id'), primary_key=True)
 
 
 class Permission(PrimeEntity, NodeMixin, FakeBase):
 
-    code = Column(String, unique=True, nullable=False)
-    name = Column(String)
+    code = Column(Text, unique=True, nullable=False)
+    name = Column(Text)
     memo = Column(Text)
-    parent_fk = Column(String, ForeignKey('permission.id'))
+    parent_fk = Column(ForeignKey('permission.id'))
 
     def save(self):
         self._update_leaf()
@@ -349,18 +349,18 @@ class Permission(PrimeEntity, NodeMixin, FakeBase):
 
 
 class RolePermissionHeader(VoidEntity, FakeBase):
-    role_fk = Column(String, ForeignKey('role.id'), primary_key=True)
-    permission_fk = Column(String, ForeignKey('permission.id'), primary_key=True)
+    role_fk = Column(ForeignKey('role.id'), primary_key=True)
+    permission_fk = Column(ForeignKey('permission.id'), primary_key=True)
 
 
 class Department(VersionEntity, NodeMixin, FakeBase):
 
-    code = Column(String(20))
-    name = Column(String(64))
+    code = Column(Text)
+    name = Column(Text)
     memo = Column(Text)
-    mgr = Column(String)
+    mgr = Column(Text)
 
-    parent_fk = Column(String, ForeignKey('department.id'))
+    parent_fk = Column(ForeignKey('department.id'))
 
     def save(self):
         self._update_leaf()
@@ -388,12 +388,12 @@ class Attachment(FakeBase, PrimeEntity):
     its N attachments
     """
 
-    fkid = Column(String(64))
-    fpath = Column(String(255))
-    fname = Column(String(255))
-    mime = Column(String(32))
+    fkid = Column(Text)
+    fpath = Column(Text)
+    fname = Column(Text)
+    mime = Column(Text)
     upload_date = Column(Integer)
-    upload_by = Column(String)
+    upload_by = Column(Text)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -410,11 +410,11 @@ START: business domain entity
 
 
 class Partner(BusinessEntity, FakeBase):
-    agent = Column(String)
+    agent = Column(Text)
 
 
 class Customer(VersionEntity, AuditMixin, FakeBase):
-    agent = Column(String)
+    agent = Column(Text)
     labels = Column(ARRAY(String))
     info = Column(JSONB)
 
@@ -433,57 +433,78 @@ Part
 """
 
 
+class MaterialSource(Enum):
+    SELF_MADE = '1'
+    PURCHASE = '2'
+
+
 class Part(BusinessEntity, NodeMixin, FakeBase):
     is_bom = Column(Boolean)
-    category_fk = Column(String)
-    uom_fk = Column(String)
+    category_fk = Column(Text)
+    uom_fk = Column(Text)
 
     labels = Column(ARRAY(String))
 
-    parent_fk = Column(String)
+    parent_fk = Column(Text)
 
     on_hand = Column(Numeric)
     on_demand = Column(Numeric)
     on_order = Column(Numeric)
+    safe_stock = Column(Numeric)
+    min_stock = Column(Numeric)
+
+    stocks = Column(JSONB)
 
     cost_avg = Column(Numeric)
     cost_std = Column(Numeric)
 
+    pd_cycle = Column(Numeric)
+    yield_rate = Column(Numeric)
+
+    props = Column(JSONB)
+
+
+class PartProperty(PrimeEntity, FakeBase):
+    part_fk = Column(Text)
+    name = Column(Text)
+    value = Column(Text)
+
 
 class PartCategory(VersionEntity, NodeMixin, FakeBase):
-    name = Column(String)
+    name = Column(Text)
     memo = Column(Text)
 
 
-class PartLabelGroup(VersionEntity, FakeBase):
-    name = Column(String)
-    category_fk = Column(String, ForeignKey('part_category.id'))
+class PartPropertyName(VersionEntity, FakeBase):
+    name = Column(Text)
+    value_type = Column(Text)
+    category_fk = Column(ForeignKey('part_category.id'))
 
 
-class PartLabel(VersionEntity, FakeBase):
-    name = Column(String)
-    group_fk = Column(String, ForeignKey('part_label_group.id'))
+class PartPropertyValue(VersionEntity, FakeBase):
+    name = Column(Text)
+    prop_fk = Column(ForeignKey('part_property_name.id'))
 
 
 class Uom(VersionEntity, FakeBase):
     """
     Unit of measure
     """
-    code = Column(String)
-    name = Column(String)
+    code = Column(Text)
+    name = Column(Text)
     ratio = Column(Numeric)
-    group_fk = Column(String)
+    group_fk = Column(Text)
     is_base = Column(Boolean)
 
 
 class UomGroup(VersionEntity, FakeBase):
-    name = Column(String)
+    name = Column(Text)
 
 
 class Warehouse(VersionEntity, NodeMixin, FakeBase):
-    keeper = Column(String)
-    code = Column(String)
-    name = Column(String)
+    keeper = Column(Text)
+    code = Column(Text)
+    name = Column(Text)
     memo = Column(Text)
 
 
@@ -491,15 +512,16 @@ class Stock(PrimeEntity, FakeBase):
     warehouse_fk = Column(ForeignKey('warehouse.id'))
     part_fk = Column(ForeignKey('part.id'))
     lot = Column(Numeric)
-    uom_fk = Column(String)
+    uom_fk = Column(Text)
 
-
-class MaterialRequirement(PrimeEntity, FakeBase):
-    pass
 
 """
 business activity
 """
+
+
+class TaskReminder(PrimeEntity, FakeBase):
+    channel = Column(Text)
 
 
 class BusinessActivity(VersionEntity, AuditMixin):
@@ -514,9 +536,31 @@ class BusinessActivity(VersionEntity, AuditMixin):
         return self.__class__.__name__ + '#' + self.id
 
 
+class MasterProductionSchedule:
+    """
+    MPS
+    """
+
+
+class MaterialRequirementPlan:
+    """
+    MRP
+    """
+    part_fk = Column(Text)
+    due_date = Column(BigInteger)
+    source = Column(Text)
+    source_fk = Column(Text)
+
+
+class CapacityRequirementPlan:
+    """
+    CRP
+    """
+
+
 class SaleQuotation(BusinessActivity, FakeBase):
     customer_fk = Column(ForeignKey('customer.id'))
-    agent = Column(String)
+    agent = Column(Text)
 
 
 class SaleQuotationItem(PrimeEntity, FakeBase):
@@ -524,8 +568,8 @@ class SaleQuotationItem(PrimeEntity, FakeBase):
 
 
 class SaleOrder(BusinessActivity, FakeBase):
-    customer_fk = Column(String)
-    agent = Column(String)
+    customer_fk = Column(Text)
+    agent = Column(Text)
     contacts = Column(JSONB)
     total_tax = Column(Numeric)
     total_amount = Column(Numeric)
@@ -552,8 +596,8 @@ class MaterialReturnBill(BusinessActivity, FakeBase):
 
 
 class PurchaseOrder(BusinessActivity, FakeBase):
-    customer_fk = Column(String)
-    agent = Column(String)
+    customer_fk = Column(Text)
+    agent = Column(Text)
     total_tax = Column(Numeric)
     total_amount = Column(Numeric)
     discount = Column(Numeric)
@@ -648,14 +692,14 @@ Financial
 
 
 class FinancialAccount(VersionEntity, NodeMixin, FakeBase):
-    code = Column(String)
-    name = Column(String)
+    code = Column(Text)
+    name = Column(Text)
     balance = Column(Numeric)
 
 
 class GeneralJournal(VersionEntity, AuditMixin, FakeBase):
     date = Column(BigInteger)
-    clerk = Column(String)
+    clerk = Column(Text)
     posted = Column(Boolean)
     amount = Column(Numeric)
 
