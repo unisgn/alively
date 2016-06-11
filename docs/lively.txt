@@ -1,5 +1,5 @@
 
-app menu:
+### app menu:
 
 Corporation
     Staff
@@ -28,3 +28,28 @@ Account
     Payment
     Receipt
 System
+
+
+
+WorkFlow loop
+SaleOrder --> MPS --> MRP -->  PurchaseOrder
+   |                                |
+   | <-- Delivery  <-- WorkOrder <--|
+
+Task Oriented:
+Manufacture Planner listen to:
+product requirement to make production plan
+
+warehouse listen to:
+purchase order to receive raw material
+work order/OEM order to receive product
+sale order to deliver product
+
+purchase dep listen to:
+raw material requirement
+OEM order
+
+there could be a task reminder event channel
+you can assign somebody to some channel to enforce him to listen to the reminder, this is a passive listening
+and you can also subscribe to the reminder channel  to supervise the event and so on,
+if you have the permission to subscribe, this is a initiative listening
