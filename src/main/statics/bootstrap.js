@@ -4,7 +4,7 @@ Ext.Loader.setConfig({
     enabled: true,
     paths: {
         'Beaux': 'Beaux',
-        // 'Finetrust': 'finetrust'
+        'Lively': 'Lively'
     }
 });
 

@@ -10,6 +10,8 @@
 /finetrust
 .idea/
 
+/docs/markdown.md
+
 # Sensitive or high-churn files:
 #.idea/dataSources.ids
 #.idea/dataSources.xml
