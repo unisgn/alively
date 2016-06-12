@@ -440,6 +440,10 @@ class MaterialSource(Enum):
 
 
 class Bom(VersionEntity, FakeBase):
+    """
+    to accelerate query, every bom should record all material and accumulated amount in its tree
+    along with the final product
+    """
     id = Column(String, primary_key=True)
 
     part_fk = Column(ForeignKey('part.id'))
@@ -450,7 +454,7 @@ class Bom(VersionEntity, FakeBase):
     parent_fk = Column(ForeignKey('bom.id'))
     final_part_fk = Column(ForeignKey('part.id'))
 
-    parent = relationship('Bom', remote_side=[id], backref=backref('children', cascade='all'))
+    parent = relationship('Bom', remote_side=[id], backref=backref('children', cascade='all,delete,delete-orphan'))
     part = relationship('Part', foreign_keys=[part_fk], backref=backref('bom', uselist=False))
 
     def __init__(self, **kwargs):
