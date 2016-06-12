@@ -19,8 +19,8 @@ import jieba
 
 from util import ChainDict
 from web import route, ctx, restful
-
-
+from app_dict import *
+import uuid
 
 def default_naming_strategy(name):
     import re
@@ -235,7 +235,6 @@ class User(VersionEntity, AuditMixin, FakeBase):
     login_time = Column(BigInteger)
     logout_time = Column(BigInteger)
 
-
     OPWD = '898989'
     SALT = '9iOl*$K'
 
@@ -411,20 +410,22 @@ START: business domain entity
 
 class Partner(BusinessEntity, FakeBase):
     agent = Column(Text)
+    role_flag = Column(Integer)  # use bit mask to combine multi roles
 
 
 class Customer(VersionEntity, AuditMixin, FakeBase):
+    partner_fk = Column(Text)
     agent = Column(Text)
-    labels = Column(ARRAY(String))
+    labels = Column(ARRAY(Text))
     info = Column(JSONB)
 
 
 class Vendor(VersionEntity, AuditMixin, FakeBase):
-    pass
+    partner_fk = Column(Text)
 
 
 class Employee(VersionEntity, AuditMixin, FakeBase):
-
+    partner_fk = Column(Text)
     info = Column(JSONB)
 
 
@@ -438,20 +439,82 @@ class MaterialSource(Enum):
     PURCHASE = '2'
 
 
-class Part(BusinessEntity, NodeMixin, FakeBase):
-    is_bom = Column(Boolean)
+class Bom(VersionEntity, FakeBase):
+    id = Column(String, primary_key=True)
+
+    part_fk = Column(ForeignKey('part.id'))
+    amount = Column(Numeric)
+    acc_amount = Column(Numeric)
+    uom_fk = Column(Text)
+    leaf = Column(Boolean)
+    parent_fk = Column(ForeignKey('bom.id'))
+    final_part_fk = Column(ForeignKey('part.id'))
+
+    parent = relationship('Bom', remote_side=[id], backref=backref('children', cascade='all'))
+    part = relationship('Part', foreign_keys=[part_fk], backref=backref('bom', uselist=False))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.leaf = True
+
+    def append(self, child):
+        """
+        :type child: Bom
+        """
+        child.parent = self
+        child.final_part_fk = self.final_part_fk
+        if self.amount is not None:
+            child.acc_amount = self.amount * child.amount
+        else:
+            child.acc_amount = child.amount
+        part = Part.load(child.part_fk)
+        if part.has_bom:
+            child.leaf = False
+            for c in part.bom.children:  # type: Bom
+                c = c._fork()
+                child.append(c)
+
+        self.children.append(child)
+        return self
+
+    def top(self, part_fk):
+        if self.leaf:
+            self.leaf = False
+        self.part_fk = part_fk
+        if not self.part:
+            self.part = Part.load(part_fk)
+            if not self.part.has_bom:
+                self.part.has_bom = True
+        self.final_part_fk = part_fk
+        self.acc_amount = 1
+        return self
+
+    def _fork(self):
+        return Bom(id=str(uuid.uuid4()), amount=self.amount, uom_fk=self.uom_fk, leaf=self.leaf, part_fk=self.part_fk)
+
+    def truncate(self):
+        self.children.clear()
+        return self
+
+
+class Part(BusinessEntity, FakeBase):
+    has_bom = Column(Boolean)
     category_fk = Column(Text)
     uom_fk = Column(Text)
+    source = Column(Text)
+    barcode = Column(Text)
 
-    labels = Column(ARRAY(String))
+    img_url = Column(Text)
 
-    parent_fk = Column(Text)
+    labels = Column(ARRAY(Text))
 
     on_hand = Column(Numeric)
     on_demand = Column(Numeric)
-    on_order = Column(Numeric)
+    on_produce = Column(Numeric)
+
     safe_stock = Column(Numeric)
     min_stock = Column(Numeric)
+    max_stock = Column(Numeric)
 
     stocks = Column(JSONB)
 
@@ -462,6 +525,29 @@ class Part(BusinessEntity, NodeMixin, FakeBase):
     yield_rate = Column(Numeric)
 
     props = Column(JSONB)
+
+    # bom_fk = Column(ForeignKey('bom.id'))
+    # bom = relationship('Bom', uselist=False, back_populates='part', foreign_keys=[Bom.part_fk])
+
+
+class PartItem(PrimeEntity):
+    part_fk = Column(Text)
+    ref_fk = Column(Text)
+    tx_warehouse_fk = Column(Text)
+    rx_warehouse_fk = Column(Text)
+    uom_fk = Column(Text)
+    lot = Column(Numeric)
+    price = Column(Numeric)
+    amount = Column(Numeric)
+    discount = Column(Numeric)
+    tax = Column(Numeric)
+    memo = Column(Numeric)
+    due_date = Column(BigInteger)
+    lot_proceed = Column(Numeric)
+    lot_received = Column(Numeric)
+    lot_delivered = Column(Numeric)
+    lot_invoiced = Column(Numeric)
+    lot_total_return = Column(Numeric)
 
 
 class PartProperty(PrimeEntity, FakeBase):
@@ -505,7 +591,8 @@ class Warehouse(VersionEntity, NodeMixin, FakeBase):
     keeper = Column(Text)
     code = Column(Text)
     name = Column(Text)
-    memo = Column(Text)
+    info = Column(JSONB)
+    is_default = Column(Boolean)
 
 
 class Stock(PrimeEntity, FakeBase):
@@ -525,10 +612,12 @@ class TaskReminder(PrimeEntity, FakeBase):
 
 
 class BusinessActivity(VersionEntity, AuditMixin):
-
+    number = Column(Text)
+    code = Column(Text)
+    event_date = Column(BigInteger)
+    status = Column(Text)
     ref_docs = Column(JSONB)
-    public_notes = Column(JSONB)
-    private_notes = Column(JSONB)
+    notes = Column(JSONB)
     attachments = Column(JSONB)
 
     @property
@@ -536,9 +625,130 @@ class BusinessActivity(VersionEntity, AuditMixin):
         return self.__class__.__name__ + '#' + self.id
 
 
+class BusinessOrder(BusinessActivity):
+    partner_fk = Column(Text)
+    agent = Column(Text)
+    total_tax = Column(Numeric)
+    total_amount = Column(Numeric)
+    discount = Column(Numeric)
+    ref_order_no = Column(Text)
+    deliver_plan = Column(JSONB)
+    payment_plan = Column(JSONB)
+    stat_payment = Column(Text)
+    stat_deliver = Column(Text)
+
+
+class BusinessQuotation(BusinessActivity):
+    partner_fk = Column(Text)
+    agent = Column(Text)
+
+
+class SaleOrder(BusinessOrder, FakeBase):
+    pass
+
+
+class SaleOrderItem(PartItem, FakeBase):
+    pass
+
+
+class SaleQuotation(BusinessQuotation, FakeBase):
+    pass
+
+
+class SaleQuotationItem(PartItem, FakeBase):
+    pass
+
+
+class PurchaseOrder(BusinessOrder, FakeBase):
+    pass
+
+
+class PurchaseOrderItem(PartItem, FakeBase):
+    pass
+
+
+class PurchaseRequisition(BusinessActivity, FakeBase):
+    applicant = Column(Text)
+    receipt = Column(Text)
+    department_fk = Column(Text)
+    due_date = Column(BigInteger)
+
+
+class PurchaseRequisitionItem(PartItem, FakeBase):
+    pass
+
+
+class PurchaseQuotation(BusinessQuotation, FakeBase):
+    """
+    RFQ: Request for quotation，询价单
+    """
+    pass
+
+
+class PurchaseQuotationItem(PartItem, FakeBase):
+    pass
+
+
+class MaterialTransfer(BusinessActivity):
+    operator = Column(Text)
+    sender = Column(Text)
+    receiver = Column(Text)
+    warehouse_tx = Column(Text)
+    warehouse_rx = Column(Text)
+    total_amount = Column(Numeric)
+    parent_doc = Column(Text)
+
+
+class MaterialReceipt(MaterialTransfer, FakeBase):
+    pass
+
+
+class MaterialReceiptItem(PartItem, FakeBase):
+    pass
+
+
+class MaterialReceiptReturn(MaterialTransfer, FakeBase):
+    pass
+
+
+class MaterialReceiptReturnItem(PartItem, FakeBase):
+    pass
+
+
+class MaterialDelivery(MaterialTransfer, FakeBase):
+    pass
+
+
+class MaterialDeliveryItem(PartItem, FakeBase):
+    pass
+
+
+class MaterialDeliveryReturn(MaterialTransfer, FakeBase):
+    pass
+
+
+class MaterialDeliveryReturnItem(PartItem, FakeBase):
+    pass
+
+
+class OtherMaterialTransfer(MaterialTransfer, FakeBase):
+    pass
+
+
+class OtherMaterialTransferItem(PartItem, FakeBase):
+    pass
+
+
+"""
+Manufacture
+"""
+
+
+
 class MasterProductionSchedule:
     """
-    MPS
+    MPS相较于MRP，主要区别在于其目标是加入人为干预后形成持续的，平稳的生产计划
+    而依据MRP具有较大的波动性，
     """
 
 
@@ -556,68 +766,7 @@ class CapacityRequirementPlan:
     """
     CRP
     """
-
-
-class SaleQuotation(BusinessActivity, FakeBase):
-    customer_fk = Column(ForeignKey('customer.id'))
-    agent = Column(Text)
-
-
-class SaleQuotationItem(PrimeEntity, FakeBase):
     pass
-
-
-class SaleOrder(BusinessActivity, FakeBase):
-    customer_fk = Column(Text)
-    agent = Column(Text)
-    contacts = Column(JSONB)
-    total_tax = Column(Numeric)
-    total_amount = Column(Numeric)
-    discount = Column(Numeric)
-    due_date = Column(BigInteger)
-
-
-class SaleOrderItem(PrimeEntity, FakeBase):
-    order_fk = Column(ForeignKey('sale_order.id'))
-    item = Column(ForeignKey('part.id'))
-    lot = Column(Numeric)
-    price = Column(Numeric)
-    tax = Column(Numeric)
-    amount = Column(Numeric)
-    memo = Column(Text)
-    due_date = Column(BigInteger)
-
-
-class MaterialReturnBill(BusinessActivity, FakeBase):
-    """
-    RMA, Return Material Authorization, 退货单
-    """
-    pass
-
-
-class PurchaseOrder(BusinessActivity, FakeBase):
-    customer_fk = Column(Text)
-    agent = Column(Text)
-    total_tax = Column(Numeric)
-    total_amount = Column(Numeric)
-    discount = Column(Numeric)
-    due_date = Column(BigInteger)
-
-
-class PurchaseOrderItem(PrimeEntity, FakeBase):
-    order_fk = Column(ForeignKey('purchase_order.id'))
-    item = Column(ForeignKey('part.id'))
-    lot = Column(Numeric)
-    price = Column(Numeric)
-    tax = Column(Numeric)
-    amount = Column(Numeric)
-    memo = Column(Text)
-
-
-class QuotationRequest(BusinessActivity, FakeBase):
-    """
-    RFQ: Request for quotation，询价单
-    """
 
 
 class WorkOrder(BusinessActivity, FakeBase):
@@ -631,60 +780,17 @@ class WorkOrderItem(PrimeEntity, FakeBase):
     memo = Column(Text)
 
 
-class MaterialBilItem(PrimeEntity, FakeBase):
-    item = Column(ForeignKey('part.id'))
-    lot = Column(Numeric)
-    memo = Column(Text)
-    warehouse_fk = Column(ForeignKey('warehouse.id'))
-    bill_fk = Column(ForeignKey('material_bill.id'))
-
-
-class MaterialBill(PrimeEntity, FakeBase):
-    trans_in = Column(Boolean)
-    items = relationship('MaterialBilItem')
-
-
-class MaterialTransfer(BusinessActivity):
-
-    @declared_attr
-    def bill_fk(self):
-        return Column(ForeignKey('material_bill.id'))
-
-    @declared_attr
-    def bill(self):
-        return relationship('MaterialBill')
-
-
-class MaterialReceipt(MaterialTransfer, FakeBase):
-    pass
-
-
-class MaterialDelivery(MaterialTransfer, FakeBase):
-    pass
-
-
 class MaterialIssue(MaterialTransfer, FakeBase):
+    pass
+
+
+class MaterialIssueReturn(MaterialTransfer, FakeBase):
     pass
 
 
 class MaterialPick(MaterialTransfer, FakeBase):
     pass
 
-
-class InvoiceSale(BusinessActivity, FakeBase):
-    pass
-
-
-class InvoiceReceipt(BusinessActivity, FakeBase):
-    pass
-
-
-class InvoicePurchase(BusinessActivity, FakeBase):
-    pass
-
-
-class InvoicePayment(BusinessActivity, FakeBase):
-    pass
 
 """
 Financial
@@ -695,6 +801,21 @@ class FinancialAccount(VersionEntity, NodeMixin, FakeBase):
     code = Column(Text)
     name = Column(Text)
     balance = Column(Numeric)
+    category = Column(Text)
+
+    def make_debit(self, amount):
+        cat = AccountCategory(self.category)
+        if cat.is_asset():
+            self.balance += amount
+        else:
+            self.balance -= amount
+
+    def make_credit(self, amount):
+        cat = AccountCategory(self.category)
+        if cat.is_asset():
+            self.balance -= amount
+        else:
+            self.balance += amount
 
 
 class GeneralJournal(VersionEntity, AuditMixin, FakeBase):
@@ -704,11 +825,63 @@ class GeneralJournal(VersionEntity, AuditMixin, FakeBase):
     amount = Column(Numeric)
 
 
-class FinancialJournalItem(PrimeEntity, FakeBase):
+class GeneralJournalItem(PrimeEntity, FakeBase):
     account_fk = Column(ForeignKey('general_journal.id'))
     memo = Column(Text)
-    credit = Column(Numeric)
     debit = Column(Numeric)
+    credit = Column(Numeric)
+
+
+class GeneralInvoice(PrimeEntity):
+    code = Column(Text)
+    date = Column(Text)
+    flag = Column(Text)  # app_dict: invoice_flag
+    type = Column(Text)  # app_dict: invoice_type
+    amount = Column(Numeric)
+    subject = Column(Text)  # @Partner.id
+    note = Column(Text)
+    memo = Column(Text)
+    ref_docs = Column(JSONB)
+
+
+class Currency(PrimeEntity, FakeBase):
+    code = Column(Text)
+    name = Column(Text)
+    ex_rate = Column(Text)
+    is_base = Column(Boolean)
+    is_default = Column(Boolean)
+
+
+class CashAccount(PrimeEntity, FakeBase):
+    code = Column(Text)
+    name = Column(Text)
+    cash_type = Column(Text)
+    bank_branch = Column(Text)
+    bank_acct = Column(Text)
+    cuy = Column(Text)  # @Currency.id
+    init_balance = Column(Numeric)
+    balance = Column(Numeric)
+    is_default = Column(Boolean)
+
+
+class InvoiceItem(PrimeEntity, FakeBase):
+    part_fk = Column(Text)
+    amount = Column(Numeric)
+
+
+class SaleInvoice(GeneralInvoice, FakeBase):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.flag = '2'
+
+
+class PurchaseInvoice(GeneralInvoice, FakeBase):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.flag = '1'
+
 
 
 
